@@ -1,0 +1,69 @@
+# 梁昱桐 2100013116
+    .pos 0
+    irmovq stack,%rsp
+    call main
+    halt
+
+.align 8
+Array:
+.quad 0xbca
+.quad 0xcba
+.quad 0xacb
+.quad 0xcab
+.quad 0xabc
+.quad 0xbac
+
+main: 
+    irmovq Array, %rdi
+    irmovq $6,%rsi
+    call bubble_sort #bubble sort(Array,6)
+    ret
+
+bubble_sort: 
+    pushq %rbx
+    irmovq $8,%r8 #常数8
+    irmovq $1,%r9 #常数1
+    xorq %rbx,%rbx
+    rrmovq %rdi,%rbx
+    
+    jmp test0
+loop0:
+    addq %r8,%rbx
+    subq %r9,%rsi
+test0:
+    andq %rsi,%rsi
+    jne loop0
+
+    subq %r9,%rbx #initialize last in rbx
+    jmp test1
+loop1:
+    # start loop 2
+    rrmovq %rdi,%rcx # init i in rcx
+    jmp test2
+loop2:
+        #start check and swap
+    mrmovq (%rcx),%r10
+    mrmovq 8(%rcx),%r11
+    rrmovq %r10,%r12
+    subq %r11,%r12
+    jle skip #*i-*(i+1)<=0不交换
+    rmmovq %r11,(%rcx) # 交换
+    rmmovq %r10,8(%rcx)
+skip:
+        #end check and swap
+    addq %r8,%rcx #rcx++
+test2:
+    rrmovq %rbx,%r10
+    subq %rcx,%r10
+    jg loop2 # last-i>0
+    # end loop 2
+    subq %r8,%rbx #last--
+test1:
+    rrmovq %rdi,%r10
+    subq %rbx,%r10
+    jl loop1 # data-last<0
+    popq %rbx
+    ret 
+
+.pos 0x200
+stack:

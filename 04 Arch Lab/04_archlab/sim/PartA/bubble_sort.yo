@@ -1,0 +1,69 @@
+                            | # 梁昱桐 2100013116
+0x000:                      |     .pos 0
+0x000: 30f40002000000000000 |     irmovq stack,%rsp
+0x00a: 804800000000000000   |     call main
+0x013: 00                   |     halt
+                            | 
+0x018:                      | .align 8
+0x018:                      | Array:
+0x018: ca0b000000000000     | .quad 0xbca
+0x020: ba0c000000000000     | .quad 0xcba
+0x028: cb0a000000000000     | .quad 0xacb
+0x030: ab0c000000000000     | .quad 0xcab
+0x038: bc0a000000000000     | .quad 0xabc
+0x040: ac0b000000000000     | .quad 0xbac
+                            | 
+0x048:                      | main: 
+0x048: 30f71800000000000000 |     irmovq Array, %rdi
+0x052: 30f60600000000000000 |     irmovq $6,%rsi
+0x05c: 806600000000000000   |     call bubble_sort #bubble sort(Array,6)
+0x065: 90                   |     ret
+                            | 
+0x066:                      | bubble_sort: 
+0x066: a03f                 |     pushq %rbx
+0x068: 30f80800000000000000 |     irmovq $8,%r8 #常数8
+0x072: 30f90100000000000000 |     irmovq $1,%r9 #常数1
+0x07c: 6333                 |     xorq %rbx,%rbx
+0x07e: 2073                 |     rrmovq %rdi,%rbx
+                            |     
+0x080: 708d00000000000000   |     jmp test0
+0x089:                      | loop0:
+0x089: 6083                 |     addq %r8,%rbx
+0x08b: 6196                 |     subq %r9,%rsi
+0x08d:                      | test0:
+0x08d: 6266                 |     andq %rsi,%rsi
+0x08f: 748900000000000000   |     jne loop0
+                            | 
+0x098: 6193                 |     subq %r9,%rbx #initialize last in rbx
+0x09a: 70f400000000000000   |     jmp test1
+0x0a3:                      | loop1:
+                            |     # start loop 2
+0x0a3: 2071                 |     rrmovq %rdi,%rcx # init i in rcx
+0x0a5: 70e500000000000000   |     jmp test2
+0x0ae:                      | loop2:
+                            |         #start check and swap
+0x0ae: 50a10000000000000000 |     mrmovq (%rcx),%r10
+0x0b8: 50b10800000000000000 |     mrmovq 8(%rcx),%r11
+0x0c2: 20ac                 |     rrmovq %r10,%r12
+0x0c4: 61bc                 |     subq %r11,%r12
+0x0c6: 71e300000000000000   |     jle skip #*i-*(i+1)<=0不交换
+0x0cf: 40b10000000000000000 |     rmmovq %r11,(%rcx) # 交换
+0x0d9: 40a10800000000000000 |     rmmovq %r10,8(%rcx)
+0x0e3:                      | skip:
+                            |         #end check and swap
+0x0e3: 6081                 |     addq %r8,%rcx #rcx++
+0x0e5:                      | test2:
+0x0e5: 203a                 |     rrmovq %rbx,%r10
+0x0e7: 611a                 |     subq %rcx,%r10
+0x0e9: 76ae00000000000000   |     jg loop2 # last-i>0
+                            |     # end loop 2
+0x0f2: 6183                 |     subq %r8,%rbx #last--
+0x0f4:                      | test1:
+0x0f4: 207a                 |     rrmovq %rdi,%r10
+0x0f6: 613a                 |     subq %rbx,%r10
+0x0f8: 72a300000000000000   |     jl loop1 # data-last<0
+0x101: b03f                 |     popq %rbx
+0x103: 90                   |     ret 
+                            | 
+0x200:                      | .pos 0x200
+0x200:                      | stack:

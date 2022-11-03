@@ -1,0 +1,173 @@
+#/* $begin ncopy-ys */
+##################################################################
+# ncopy.ys - Copy a src block of len words to dst.
+# Return the number of positive words (>0) contained in src.
+#
+# Include your name and ID here.
+# 梁昱桐 2100013116
+# Describe how and why you modified the baseline code.
+
+# first , implement the iaddq instruction in pipe-full
+# then substitude irmovq-addq by iaddq 
+# using loop unrooling(9) 九重循环展开
+# deal with the rest information(len % 9) at last
+# 注意在处理余数的时候要将0-8平均分三份处理，而且应该优先处理余数较小的情况，从而高效降低CPE平均值
+# 关于戳气泡：将mrmovq，放在jmp之前，与使用该寄存器的指令隔开，从而可以用转发避免load/use hazard，消除一个气泡
+##################################################################
+# Do not modify this portion
+# Function prologue.
+# %rdi = src, %rsi = dst, %rdx = len
+ncopy:
+
+##################################################################
+# You can modify this portion
+	# Loop header
+	iaddq $-9,%rdx #len-=9
+	jl deal_with_remainder #if len<0,goto deal with len%9
+loop_unrolling:
+	mrmovq (%rdi),%rbx
+	mrmovq 0x08(%rdi),%rcx
+	mrmovq 0x10(%rdi),%r8
+	mrmovq 0x18(%rdi),%r9
+	mrmovq 0x20(%rdi),%r10
+	mrmovq 0x28(%rdi),%r11
+	mrmovq 0x30(%rdi),%r12
+	mrmovq 0x38(%rdi),%r13
+	mrmovq 0x40(%rdi),%r14
+
+	andq %rbx,%rbx
+	rmmovq %rbx,(%rsi)
+	jle skip1
+	iaddq $1,%rax
+skip1:
+	andq %rcx,%rcx
+	rmmovq %rcx,0x08(%rsi)
+	jle skip2
+	iaddq $1,%rax
+skip2:
+	andq %r8,%r8
+	rmmovq %r8,0x10(%rsi)
+	jle skip3
+	iaddq $1,%rax
+skip3:
+	andq %r9,%r9
+	rmmovq %r9,0x18(%rsi)
+	jle skip4
+	iaddq $1,%rax
+skip4:
+	andq %r10,%r10
+	rmmovq %r10,$0x20(%rsi)
+	jle skip5
+	iaddq $1,%rax
+skip5:
+	andq %r11,%r11
+	rmmovq %r11,0x28(%rsi)
+	jle skip6
+	iaddq $1,%rax
+skip6:
+	andq %r12,%r12
+	rmmovq %r12,0x30(%rsi)
+	jle skip7
+	iaddq $1,%rax
+skip7:
+	andq %r13,%r13
+	rmmovq %r13,0x38(%rsi)
+	jle skip8
+	iaddq $1,%rax
+skip8:
+	andq %r14,%r14
+	rmmovq %r14,0x40(%rsi)
+	jle skip9
+	iaddq $1,%rax
+skip9:
+	iaddq $0x48,%rdi
+	iaddq $0x48,%rsi
+	iaddq $-9,%rdx
+	jge loop_unrolling # there's at least 9 elements
+
+deal_with_remainder:
+	iaddq $6,%rdx
+	jl remainder_0_2 #提前处理余数较小的情况
+	iaddq $-3,%rdx
+	jl remainder_3_5
+remainder_6_8:
+	iaddq $-1,%rdx
+	mrmovq 0x28(%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	jl remainder_6
+	mrmovq 0x30(%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	je remainder_7
+	mrmovq 0x38(%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	jg remainder_8
+remainder_3_5:
+	iaddq $2,%rdx
+	mrmovq 0x10(%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	jl remainder_3
+	mrmovq 0x18(%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	je remainder_4
+	mrmovq 0x20(%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	jg remainder_5
+remainder_0_2:
+	iaddq $2,%rdx
+	mrmovq (%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	je remainder_1
+	mrmovq 0x8(%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	jg remainder_2
+	ret
+
+
+remainder_8:
+	andq %rbx,%rbx
+	rmmovq %rbx,0x38(%rsi)
+	mrmovq 0x30(%rdi),%rbx #mrmovq prior to jmp to erase bubble
+	jle remainder_7
+	iaddq $1,%rax
+remainder_7:
+	andq %rbx,%rbx
+	rmmovq %rbx,0x30(%rsi)
+	mrmovq 0x28(%rdi),%rbx
+	jle remainder_6
+	iaddq $1,%rax
+remainder_6:
+	andq %rbx,%rbx
+	rmmovq %rbx,0x28(%rsi)
+	mrmovq 0x20(%rdi),%rbx
+	jle remainder_5
+	iaddq $1,%rax
+remainder_5:
+	andq %rbx,%rbx
+	rmmovq %rbx,0x20(%rsi)
+	mrmovq 0x18(%rdi),%rbx
+	jle remainder_4
+	iaddq $1,%rax
+remainder_4:
+	andq %rbx,%rbx
+	rmmovq %rbx,0x18(%rsi)
+	mrmovq 0x10(%rdi),%rbx
+	jle remainder_3
+	iaddq $1,%rax
+remainder_3:
+	andq %rbx,%rbx
+	rmmovq %rbx,0x10(%rsi)
+	mrmovq 0x8(%rdi),%rbx
+	jle remainder_2
+	iaddq $1,%rax
+remainder_2:
+	andq %rbx,%rbx
+	rmmovq %rbx,0x8(%rsi)
+	mrmovq (%rdi),%rbx
+	jle remainder_1
+	iaddq $1,%rax
+remainder_1:
+	andq %rbx,%rbx
+	rmmovq %rbx,(%rsi)
+	jle Done
+	iaddq $1,%rax
+##################################################################
+# Do not modify the following section of code
+# Function epilogue.
+Done:
+	ret
+##################################################################
+# Keep the following label at the end of your function
+End:
+#/* $end ncopy-ys */
