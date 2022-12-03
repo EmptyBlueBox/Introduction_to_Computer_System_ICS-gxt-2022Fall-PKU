@@ -4,7 +4,7 @@
  * StudentID: 2100013116
  * @brief - a general purpose dynamic storage allocator for C programs
  *   Explicit Free Lists + Segregated Free Lists + Segregated Fits
- *   Moreover, put a prevfree bit in the next block to show that whether
+ *   Moreover, put a prevfree bit in the SUCC block to show that whether
  * the previous block is free or not, because the allocted block hasn't
  * got a footer which we deleted to get more memory space
  */
@@ -14,6 +14,16 @@
 
 #include "mm.h"
 #include "memlib.h"
+
+/* If you want debugging output, use the following macro.  When you hand
+ * in, remove the #define DEBUG line. */
+//#define DEBUG
+#ifdef DEBUG
+char *debugnum;
+#define dbg_printf(...) printf(__VA_ARGS__)
+#else
+#define dbg_printf(...)
+#endif
 
 /* do not change the following! */
 #ifdef DRIVER
@@ -31,10 +41,14 @@
 // 1<<13 60+37
 // 1<<14
 // the bigger the faster
-#define CHUNKSIZE ((1 << 13) + (1 << 12)) /* Extend heap by this amount (bytes) */
+#define CHUNKSIZE (1 << 12) /* Extend heap by this amount (bytes) */
 // the biger the faster
 #define MIN_HEAP_EXTEND 512
 #define LISTNUM 15 /* Number of segregated lists */
+/* single word (4) or double word (8) alignment */
+#define ALIGNMENT 8
+/* rounds up to the nearest multiple of ALIGNMENT */
+#define ADD_ALIGN(p) (((size_t)(p) + (ALIGNMENT - 1)) & ~0x7)
 #define ALIGN(size) (((((unsigned long)size) + (DSIZE - 1)) / (DSIZE)) * (DSIZE))
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -64,7 +78,7 @@
 #define SET_PRED(bp, val) (*(unsigned int *)(bp) = ((unsigned int)(size_p)val))
 #define SET_SUCC(bp, val) (*(unsigned int *)((char *)bp + WSIZE) = ((unsigned int)(size_p)val))
 
-/* Given block ptr bp, compute address of next and previous blocks */
+/* Given block ptr bp, compute address of SUCC and previous blocks */
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
 
@@ -83,6 +97,9 @@ static void *extend_heap(size_t words);
 static void *place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static void *coalesce(void *bp);
+
+/*functions for debugging*/
+void mm_checklist(int lineno);
 
 /*
  * mm_init - Initialize the memory manager and the segregate list
@@ -139,6 +156,10 @@ void *malloc(size_t size)
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;
     return place(bp, asize);
+
+#ifdef DEBUG
+    mm_checkheap(161);
+#endif
 }
 
 /*
@@ -159,7 +180,7 @@ void free(void *bp)
     SET_FREE(HDRP(bp));
     PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 0));
 
-    /* Set prev-free bit(s) of next block  */
+    /* Set PRED-free bit(s) of SUCC block  */
     if (GET_ALLOC(HDRP(NEXT_BLKP(bp))))
         SET_PREVFREE(HDRP(NEXT_BLKP(bp)));
     else
@@ -173,6 +194,10 @@ void free(void *bp)
 
     /*Merge possible free blocks*/
     coalesce(bp);
+
+#ifdef DEBUG
+    mm_checkheap(199);
+#endif
 }
 
 /*
@@ -279,57 +304,11 @@ static void insert_node(void *bp, size_t size)
     char *cur = segregated_list[num];
     char *pre = mem_heap_lo();
     char *end = mem_heap_lo();
-    while ((cur != end) && (GET_SIZE(HDRP(cur)) < size))
-    {
-        pre = cur;
-        cur = SUCC(cur);
-    }
-    // insert bp between pre and cur
-
-    // if (cur == end)
-    // {
-    //     if (pre == end)
-    //     {
-    //         SET_PRED(bp, NULL);
-    //         SET_SUCC(bp, NULL);
-    //         segregated_list[num] = bp;
-    //     }
-    //     else
-    //     {
-    //         SET_SUCC(pre, bp);
-    //         SET_PRED(bp, pre);
-    //         SET_SUCC(bp, NULL);
-    //     }
-    // }
-    // else
-    // {
-    //     if (pre == end)
-    //     {
-    //         SET_PRED(cur, bp);
-    //         SET_SUCC(bp, cur);
-    //         SET_PRED(bp, NULL);
-    //         segregated_list[num] = bp;
-    //     }
-    //     else
-    //     {
-    //         SET_SUCC(pre, bp);
-    //         SET_PRED(cur, bp);
-    //         SET_SUCC(bp, cur);
-    //         SET_PRED(bp, pre);
-    //     }
-    // }
-
     if ((cur == end) && (pre == end)) // when list is empty
     {
         SET_PRED(bp, NULL);
         SET_SUCC(bp, NULL);
         segregated_list[num] = bp;
-    }
-    else if ((cur == end) && (pre != end)) // end of the list
-    {
-        SET_SUCC(pre, bp);
-        SET_PRED(bp, pre);
-        SET_SUCC(bp, NULL);
     }
     else if ((cur != end) && (pre == end)) // start of the list
     {
@@ -338,6 +317,12 @@ static void insert_node(void *bp, size_t size)
         SET_PRED(bp, NULL);
         segregated_list[num] = bp;
     }
+    else if ((cur == end) && (pre != end)) // end of the list
+    {
+        SET_SUCC(pre, bp);
+        SET_PRED(bp, pre);
+        SET_SUCC(bp, NULL);
+    }
     else // middle of the list
     {
         SET_SUCC(pre, bp);
@@ -345,6 +330,10 @@ static void insert_node(void *bp, size_t size)
         SET_SUCC(bp, cur);
         SET_PRED(bp, pre);
     }
+
+#ifdef DEBUG
+    mm_checklist(335);
+#endif
 }
 
 /*
@@ -371,25 +360,6 @@ static void delete_node(void *bp)
         else
             segregated_list[num] = end;
     }
-
-    // if (pre == end && nxt == end)
-    //     segregated_list[num] = end;
-    // else if (pre == end && nxt != end)
-    //     segregated_list[num] = nxt, SET_PRED(nxt, NULL);
-    // else if (pre != end && nxt == end)
-    //     SET_SUCC(pre, NULL);
-    // else
-    //     SET_SUCC(pre, nxt), SET_PRED(nxt, pre);
-}
-
-/*
- * mm_checkheap - Check the heap for correctness. Helpful hint: You
- *                can call this function using mm_checkheap(__LINE__);
- *                to identify the line number of the call site.
- */
-void mm_checkheap(int lineno)
-{
-    lineno = lineno; /* keep gcc happy */
 }
 
 /*
@@ -423,14 +393,8 @@ static void *extend_heap(size_t words)
     }
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* New epilogue header */
 
-    // /* Insert the free block. */
-    // insert_node(bp, size);
-
-    // /* Coalesce if the previous block was free */
-    // return coalesce(bp);
-
     size_t prev_alloc = GET_PREVALLOC(HDRP(bp)); /* allocated block hasn't got a footer*/
-    if (!prev_alloc)                             // attach if prev is free
+    if (!prev_alloc)                             // attach if PRED is free
     {
         delete_node(PREV_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
@@ -470,6 +434,8 @@ static void *find_fit(size_t asize)
 
 /*
  * place - Cut asize from a previous free block bp
+ *
+ * return the allocated block
  */
 static void *place(void *bp, size_t asize)
 {
@@ -492,9 +458,9 @@ static void *place(void *bp, size_t asize)
     else
     {
         SET_ALLOC(HDRP(bp));
-        if (GET_ALLOC(HDRP(NEXT_BLKP(bp)))) // next block only has header
+        if (GET_ALLOC(HDRP(NEXT_BLKP(bp)))) // SUCC block only has header
             SET_PREVALLOC(HDRP(NEXT_BLKP(bp)));
-        else // next block has header and footer
+        else // SUCC block has header and footer
         {
             SET_PREVALLOC(HDRP(NEXT_BLKP(bp)));
             SET_PREVALLOC(FTRP(NEXT_BLKP(bp)));
@@ -517,7 +483,7 @@ static void *coalesce(void *bp)
         return bp;
     }
     else if (prev_alloc && !next_alloc)
-    { /* Case 2: prev allocated*/
+    { /* Case 2: PRED allocated*/
         delete_node(NEXT_BLKP(bp));
         delete_node(bp);
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
@@ -525,7 +491,7 @@ static void *coalesce(void *bp)
         PUT(FTRP(bp), PACK(size, 2));
     }
     else if (!prev_alloc && next_alloc)
-    { /* Case 3: next allocated*/
+    { /* Case 3: SUCC allocated*/
         delete_node(PREV_BLKP(bp));
         delete_node(bp);
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
@@ -561,4 +527,100 @@ static void *coalesce(void *bp)
     }
     insert_node(bp, size);
     return bp;
+}
+
+/*
+ * mm_checkheap - Check the heap for correctness.
+ *                Call this function using mm_checkheap(__LINE__);
+ *                to identify the line number of the call site.
+ */
+void mm_checkheap(int lineno)
+{
+    void *p = mem_heap_lo() + LISTNUM * DSIZE;
+    if (*(unsigned int *)p > 0x7) // check prologue block
+    {
+        dbg_printf("Code line: %d, Prologue Error\n", lineno);
+    }
+    p = (char *)p + 8 * LISTNUM + 2 * DSIZE;
+    int free_flag = 0;
+    while (p < mem_heap_hi())
+    {
+        if ((void *)ADD_ALIGN(p) != (void *)p) // check block's address alignment
+        {
+            dbg_printf("Code line: %d, Alignment Error at %p\n", lineno, p);
+        }
+        if (GET_SIZE(HDRP(p)) < 8) // check block size
+        {
+            dbg_printf("Size Error at %p\n", p);
+        }
+        if (!GET_ALLOC(HDRP(p)))
+        {
+            if (free_flag) // check free blocks' consistency
+            {
+                dbg_printf("Code line: %d, Free blocks not merged at %p\n", lineno, p);
+            }
+            free_flag = 1;
+            if (GET_SIZE(HDRP(p)) != GET_SIZE(FTRP(p)) || GET_ALLOC(FTRP(p))) // check hdr&ftr matching
+            {
+                dbg_printf("Code line: %d, Consistency Error at %p\n", lineno, p);
+            }
+        }
+        else
+            free_flag = 0;
+    }
+    p = (char *)p - WSIZE;
+    if (*(unsigned int *)p > 0x7) // check epilogue block
+        printf("Code line: %d, Epilogue Error\n", lineno);
+    return;
+}
+
+/*
+ * mm_checklist - Check the list for correctness.
+ *                Call this function using mm_checklist(__LINE__);
+ *                to identify the line number of the call site.
+ */
+void mm_checklist(int lineno)
+{
+    int cnt1 = 0, cnt2 = 0;
+    void *p = mem_heap_lo() + 15 * LISTNUM + 2 * DSIZE;
+    void *end = mem_heap_lo();
+    while (p < mem_heap_hi())
+    {
+        if (!GET_ALLOC(HDRP(p)))
+            cnt1++;
+        p = NEXT_BLKP(p);
+    }
+    for (size_t i = 0; i < LISTNUM; ++i)
+    {
+        void *cur = segregated_list[i];
+        while (cur > mem_heap_lo())
+        {
+            if (cur < mem_heap_lo() || cur > mem_heap_hi()) // check free list between heap
+            {
+                dbg_printf("Code line: %d, Error: %p in list[%d] not in heap\n", lineno, cur, i);
+            }
+            if (cur && (void *)cur != PRED(SUCC(cur))) // check list blocks' consistency
+            {
+                dbg_printf("Code line: %d, Error: info in %p and %p is not consistent\n",
+                           lineno, PRED(cur), cur);
+            }
+            if (i != get_list_index(GET_SIZE(HDRP(cur)))) // check block in the right size of the list
+            {
+                dbg_printf("Code line: %d, Error: %p(size = %ld) should not be in list[%d]\n",
+                           lineno, cur, GET_SIZE(HDRP(cur)), i);
+            }
+            if (GET_ALLOC(HDRP(cur)))
+            {
+                dbg_printf("Code line: %d, Error: allocated %p(size = %ld) should not be in list[%d]\n",
+                           lineno, cur, GET_SIZE(HDRP(cur)), i);
+            }
+            cur = SUCC(cur);
+            cnt2++;
+        }
+    }
+    if (cnt1 != cnt2) // check number matching
+    {
+        dbg_printf("Code line: %d, Error: num of free blocks is not consistent\n", lineno);
+    }
+    return;
 }
