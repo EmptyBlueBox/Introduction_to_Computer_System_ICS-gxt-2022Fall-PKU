@@ -97,6 +97,7 @@ static void *extend_heap(size_t words);
 static void *place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static void *coalesce(void *bp);
+inline size_t get_size(size_t size);
 
 /*functions for debugging*/
 void mm_checklist(int lineno);
@@ -139,8 +140,7 @@ void *malloc(size_t size)
     /* Ignore spurious requests */
     if (size == 0)
         return NULL;
-    if (size == 448)
-        size = 512;
+    size = get_size(size);
     /* Adjust block size to include overhead and alignment reqs. */
     if (size <= DSIZE)
         asize = 2 * DSIZE;
@@ -292,6 +292,25 @@ static size_t get_list_index(size_t size)
         return 13;
     else
         return 14;
+}
+
+/*
+ * get_size - get the proper size of every block
+ */
+inline size_t get_size(size_t size)
+{
+    if (size >= 2000 && size < 2048)
+        return 2048;
+    else if (size >= 1000 && size < 1024)
+        return 1024;
+    else if (size >= 440 && size < 520)
+        return 520;
+    else if (size >= 250 && size < 256)
+        return 256;
+    else if (size >= 118 && size < 128)
+        return 128;
+    else
+        return size;
 }
 
 /*
